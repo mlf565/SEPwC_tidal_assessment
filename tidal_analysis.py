@@ -12,8 +12,14 @@ import argparse
 
 
 def read_tidal_data(filename):
-
-    return
+    # skip metadata headers
+    tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, names=['LineNum', 'Date', 'Time', 'Tide', 'Residual'], engine='python')
+    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'])
+    tide_data = tide_data.set_index('DateTime')
+    tide_data = tide_data[['Tide']].copy()
+    tide_data = tide_data.mask(tide_data['Tide'] < -10)
+    
+    return tide_data
     
 def extract_single_year_remove_mean(year, data):
 
