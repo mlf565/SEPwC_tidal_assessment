@@ -13,11 +13,15 @@ import argparse
 
 def read_tidal_data(filename):
     # skip metadata headers
-    tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, names=['LineNum', 'Date', 'Time', 'Tide', 'Residual'], engine='python')
-    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'])
-    tide_data = tide_data.set_index('DateTime')
-    tide_data = tide_data[['Tide']].copy()
-    tide_data = tide_data.mask(tide_data['Tide'] < -10)
+    tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, header=None, engine='python')
+    tide_data['Date'] = pd.to_datetime(tide_data[1] + ' ' + tide_data[2])
+    tide_data = tide_data.rename(columns={3: "Sea Level"})
+    
+    tide_data = tide_data.set_index('Date')
+    tide_data = tide_data[['Sea Level']].copy()
+    
+    tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors='coerce')
+    tide_data = tide_data.mask(tide_data['Sea Level'] < -10)
     
     return tide_data
     
