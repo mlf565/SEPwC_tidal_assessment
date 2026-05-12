@@ -26,11 +26,21 @@ def read_tidal_data(filename):
     return tide_data
     
 def extract_single_year_remove_mean(year, data):
-
-    return 
+    year_string_start = str(year)+"-01-01"
+    year_string_end = str(year)+"-12-31"
+    year_data = data.loc[year_string_start:year_string_end, ['Sea Level']].copy()
+    #remove mean to oscillate ard zero
+    mmm = year_data['Sea Level'].mean()
+    year_data['Sea Level'] = year_data['Sea Level'] - mmm
+    
+    return year_data
 
 
 def extract_section_remove_mean(start, end, data):
+    year_data = data.loc[start:end, ['Sea Level']].copy()
+   
+    mmm = year_data['Sea Level'].mean()
+    year_data['Sea Level'] = year_data['Sea Level'] - mmm
 
     return year_data
 
