@@ -13,17 +13,17 @@ import argparse
 
 def read_tidal_data(filename):
     # skip metadata headers
-    tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, header=None, engine='python')
-    tide_data['Date'] = pd.to_datetime(tide_data[1] + ' ' + tide_data[2])
-    tide_data = tide_data.rename(columns={3: "Sea Level"})
+    tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, header=None, engine='python',
+                            names=['LineNum', 'Date', 'Time', 'Sea Level', 'Residual'])
     
-    tide_data = tide_data.set_index('Date')
-    tide_data = tide_data[['Sea Level']].copy()
+    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'])
+    tide_data = tide_data.set_index('DateTime')
+    
     
     tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors='coerce')
-    tide_data = tide_data.mask(tide_data['Sea Level'] < -10)
+    tide_data['Sea Level'] = tide_data['Sea Level'].mask(tide_data['Sea Level'] < -10)
     
-    return tide_data
+    return tide_data [['Sea Level', 'Time']].copy()
     
 def extract_single_year_remove_mean(year, data):
     year_string_start = str(year)+"-01-01"
@@ -46,8 +46,9 @@ def extract_section_remove_mean(start, end, data):
 
 
 def join_data(data1, data2):
-
-    return 
+    combined = pd.concat([data1, data2])
+    combined = combined.sort_index()
+    return combined 
 
 def sea_level_rise(data):
 
