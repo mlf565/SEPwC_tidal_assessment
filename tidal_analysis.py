@@ -55,8 +55,20 @@ def sea_level_rise(data):
     return
 
 def tidal_analysis(data, constituents, start_datetime):
-
-    return
+    #create Tides object with consituents ['M2', 'S2']
+    tide = uptide.Tides(constituents)
+    #set start time 
+    tide.set_initial_time(datetime.datetime(1946,6,1,0,0,0))
+    #prepare data, drop NaNs so the solver won't crash 
+    clean_data = data.dropna(subset=['Sea Level'])
+    #convert index to secondes since the start_datetime
+    start_ts = start_datetime.timestamp()
+    seconds_since = clean_data.index.map(datetime.datetime.timestamp).values - start_ts
+    #get elevation data as numpy array
+    elevations = clean_data['Sea Level'].to_numpy()
+    amp, pha = uptide.harmonic_analysis(tide, elevations, seconds_since)
+    
+    return amp, pha 
 
 def get_longest_contiguous_data(data):
 
