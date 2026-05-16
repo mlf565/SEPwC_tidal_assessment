@@ -97,7 +97,7 @@ def get_longest_contiguous_data(data):
     contiguous_blocks = data[not_null].groupby(groups)
 
     if not_null.any():
-        longest_group_id = contiguous_blocks.size().idmax()
+        longest_group_id = contiguous_blocks.size().idxmax()
         return contiguous_blocks.get_group(longest_group_id)                                                                                                                
     
     return data.iloc[0:0]
@@ -120,8 +120,10 @@ def main(args_list=None):
     dirname = args.directory
     verbose = args.verbose
     
+    dirname = dirname.rstrip(os.sep)
+
     search_path = os.path.join(dirname, "**", "*.txt")
-    files = glob.glob(search_path)
+    files = sorted(glob.glob(search_path, recursive=True))
     
     if not files:
         if verbose:
