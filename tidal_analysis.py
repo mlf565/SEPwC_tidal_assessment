@@ -87,8 +87,19 @@ def tidal_analysis(data, constituents, start_datetime):
     return amp, pha 
 
 def get_longest_contiguous_data(data):
+    """
+    identifies and extracts longest sequential segment of records unbroken by NaN/Null indicators
+    """
+    not_null = data['Sea Level'].notnull()
+    
+    groups = (not_null != not_null.shift()).cumsum()
+    contiguous_blocks = data[not_null].groupby(groups)
 
-    return 
+    if not_null.any():
+        longest_group_id = contiguous_blocks.size().idmax()
+        return contiguous_blocks.get_group(longest_group_id)                                                                                                                
+    
+    return data.iloc[0:0]
 
 
 def main(args_list=None):
