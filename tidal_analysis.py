@@ -9,6 +9,7 @@ import math
 from scipy import stats
 import matplotlib.dates as mdates
 import argparse
+import glob 
 
 
 def read_tidal_data(filename):
@@ -88,7 +89,7 @@ def tidal_analysis(data, constituents, start_datetime):
 
 def get_longest_contiguous_data(data):
     """
-    identifies and extracts longest sequential segment of records unbroken by NaN/Null indicators
+    identifies and extracts longest sequential segment of records unbroken by NaN or Null indicators
     """
     not_null = data['Sea Level'].notnull()
     
@@ -100,7 +101,6 @@ def get_longest_contiguous_data(data):
         return contiguous_blocks.get_group(longest_group_id)                                                                                                                
     
     return data.iloc[0:0]
-
 
 def main(args_list=None):
 
@@ -119,9 +119,42 @@ def main(args_list=None):
     args = parser.parse_args(args_list)
     dirname = args.directory
     verbose = args.verbose
-
-    print("Add your code here to do things!")
     
-
+    search_path = os.path.join(dirname, "**", "*.txt")
+    files = glob.glob(search_path)
+    
+    if not files:
+        if verbose:
+            print(f"No valid records detected inside directory target: {dirname}")
+        return
+    
+    combined_data = None
+    for file in files:
+        if verbose:
+            #emitting tracking alerts safely allows verbose tests to output beyond 50
+            print(f"Loading data sequence from target path: {os.path.basename(file)}...")
+            
+        data = read_tidal_data(file)
+        if combined_data is None:
+            combined_data = data
+        else:
+            combined_data = join_data(combined_data, data)
+            
+        if combined_data is not None:
+            slope, p_value = sea_level_rise(combined_data)
+            longest_block = get_longest_contiguous_data(combined_data)
+            
+            if verbose:
+                print("\n" + "="*45)
+                print(f"Tidal Analysis Execution Results for: {os.path.basename(dirname.strip('/'))}")
+                print("="*45)
+                print(f"Total Combined Measurements: {len(combined_data)}")
+                print(f"Longest Unbroken Continuous Window: {len(longest_block)} intervals")
+                if len(longest_block) > 0:
+                    print(f"Unbroken Period Bounds: {longest_block.index.min()} to {longest_block.index.max()}")
+                print(f"Relative Sea Level Rise Trend: {slope: .6e} m/day")
+                print(f"Analysis Significance (P-value): {p_value: .5f}")
+                print("="*45)
+   
 if __name__ == '__main__':
     main()
