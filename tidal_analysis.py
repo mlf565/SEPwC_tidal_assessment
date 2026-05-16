@@ -16,19 +16,20 @@ def read_tidal_data(filename):
     tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, header=None, engine='python',
                             names=['LineNum', 'Date', 'Time', 'Sea Level', 'Residual'])
     
-    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'])
+    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'], format="%Y/%m/%d %H:%M:%S")
     tide_data = tide_data.set_index('DateTime')
     
-    
+    #strip flags (M,N,T)
+    tide_data['Sea Level'] = tide_data['Sea Level'].astype(str)
+    tide_data.replace(to_replace=r".*[MNT]$", value={'Sea Level': np.nan}, regex=True, inplace=True)
+    #convert to numeric data
     tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors='coerce')
     tide_data['Sea Level'] = tide_data['Sea Level'].mask(tide_data['Sea Level'] < -10)
     
     return tide_data [['Sea Level', 'Time']].copy()
     
 def extract_single_year_remove_mean(year, data):
-    year_string_start = str(year)+"-01-01"
-    year_string_end = str(year)+"-12-31"
-    year_data = data.loc[year_string_start:year_string_end, ['Sea Level']].copy()
+    year_data = data.loc[str(year)].copy()
     #remove mean to oscillate ard zero
     mmm = year_data['Sea Level'].mean()
     year_data['Sea Level'] = year_data['Sea Level'] - mmm
@@ -38,7 +39,6 @@ def extract_single_year_remove_mean(year, data):
 
 def extract_section_remove_mean(start, end, data):
     year_data = data.loc[start:end, ['Sea Level']].copy()
-   
     mmm = year_data['Sea Level'].mean()
     year_data['Sea Level'] = year_data['Sea Level'] - mmm
 
@@ -47,23 +47,36 @@ def extract_section_remove_mean(start, end, data):
 
 def join_data(data1, data2):
     combined = pd.concat([data1, data2])
+    combined = combined[~combined.index.duplicated(keep='first')]
     combined = combined.sort_index()
     return combined 
 
 def sea_level_rise(data):
+    #clean data as linear regression cant proceed with NaNs
+    clean_data = data.dropna(subset=['Sea Level'])
+    if len(clean_data) == 0: return 0.0, 1.0
+    
+    #x-axis(Time in days)
+    t0 = pd.Timestamp(year=clean_data.index.year.min(), month=1, day=1)
+    time_days = (clean_data.index - t0).total_seconds() / 86400
+    #y-axis(Sea Level)
+    sea_levels = clean_data['Sea Level'].values
+    #linear regression
+    slope, intercept, r_value, p_value, std_err = stats.linregress(time_days, sea_levels)
 
-    return
+    return slope, p_value 
 
 def tidal_analysis(data, constituents, start_datetime):
     #create Tides object with consituents ['M2', 'S2']
     tide = uptide.Tides(constituents)
-    #set start time 
-    tide.set_initial_time(datetime.datetime(1946,6,1,0,0,0))
-    #prepare data, drop NaNs so the solver won't crash 
+    tide.set_initial_time(start_datetime)
+    
     clean_data = data.dropna(subset=['Sea Level'])
+        
     #convert index to secondes since the start_datetime
-    start_ts = start_datetime.timestamp()
-    seconds_since = clean_data.index.map(datetime.datetime.timestamp).values - start_ts
+    aware_index = clean_data.index.tz_localize("UTC")
+    seconds_since = (aware_index - start_datetime).total_seconds().to_numpy()
+    
     #get elevation data as numpy array
     elevations = clean_data['Sea Level'].to_numpy()
     amp, pha = uptide.harmonic_analysis(tide, elevations, seconds_since)
