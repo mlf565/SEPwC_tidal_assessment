@@ -69,15 +69,18 @@ def sea_level_rise(data):
 def tidal_analysis(data, constituents, start_datetime):
     #create Tides object with consituents ['M2', 'S2']
     tide = uptide.Tides(constituents)
-    tide.set_initial_time(start_datetime)
+    tide.set_initial_time(start_datetime.replace(tzinfo=None))
     
     clean_data = data.dropna(subset=['Sea Level'])
-        
-    #convert index to secondes since the start_datetime
-    aware_index = clean_data.index.tz_localize("UTC")
+    
+    #localize index to UTC, use tz_convert if it's already
+    if clean_data.index.tz is None:
+        aware_index = clean_data.index.tz_localize("UTC")
+    else:
+        aware_index = clean_data.index.tz_convert("UTC")
+
     seconds_since = (aware_index - start_datetime).total_seconds().to_numpy()
     
-    #get elevation data as numpy array
     elevations = clean_data['Sea Level'].to_numpy()
     amp, pha = uptide.harmonic_analysis(tide, elevations, seconds_since)
     
