@@ -63,7 +63,7 @@ def extract_section_remove_mean(start, end, data):
 
 def join_data(data1, data2):
     """
-    combine two seperate tidal data into chronolofically sorted set.
+    combine two seperate tidal data into chronologically sorted set.
     """
     combined = pd.concat([data1, data2])
     combined = combined[~combined.index.duplicated(keep='first')]
