@@ -1,44 +1,61 @@
+"""UK Tidal Analysis Module.
+
+this script reads, processes, and analyzes raw tide gauge data from the 
+British Oceangraphic Data Centre (BODC). it automates the calculation of
+relative sea level rise trends over time and extracts continuous operational 
+observation intervals for further mathematical or astronomical study.
+"""
+
 # import the modules we need
-import pandas as pd
-import datetime
 import os
+import argparse
+import glob
+import math
+import datetime
+import pandas as pd
 import numpy as np
 import uptide
 import pytz
-import math
 from scipy import stats
 import matplotlib.dates as mdates
-import argparse
-import glob 
 
 
 def read_tidal_data(filename):
+    """
+    reads tidal data from a text file, cleans flag markers, and format dates.
+    """
     # skip metadata headers
     tide_data = pd.read_csv(filename, sep=r'\s+', skiprows=11, header=None, engine='python',
                             names=['LineNum', 'Date', 'Time', 'Sea Level', 'Residual'])
-    
-    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'], format="%Y/%m/%d %H:%M:%S")
+    tide_data['DateTime'] = pd.to_datetime(tide_data['Date'] + ' ' + tide_data['Time'],
+                                           format="%Y/%m/%d %H:%M:%S")
     tide_data = tide_data.set_index('DateTime')
-    
+
     #strip flags (M,N,T)
     tide_data['Sea Level'] = tide_data['Sea Level'].astype(str)
     tide_data.replace(to_replace=r".*[MNT]$", value={'Sea Level': np.nan}, regex=True, inplace=True)
     #convert to numeric data
     tide_data['Sea Level'] = pd.to_numeric(tide_data['Sea Level'], errors='coerce')
     tide_data['Sea Level'] = tide_data['Sea Level'].mask(tide_data['Sea Level'] < -10)
-    
+
     return tide_data [['Sea Level', 'Time']].copy()
-    
+
 def extract_single_year_remove_mean(year, data):
+    """
+    extracts data for a target year and centers the sea levels around zero.
+    """
     year_data = data.loc[str(year)].copy()
     #remove mean to oscillate ard zero
     mmm = year_data['Sea Level'].mean()
     year_data['Sea Level'] = year_data['Sea Level'] - mmm
-    
+
     return year_data
 
 
 def extract_section_remove_mean(start, end, data):
+    """
+    slices a specific timeframe from the dataset and substract its mean.
+    """
     year_data = data.loc[start:end, ['Sea Level']].copy()
     mmm = year_data['Sea Level'].mean()
     year_data['Sea Level'] = year_data['Sea Level'] - mmm
@@ -47,33 +64,42 @@ def extract_section_remove_mean(start, end, data):
 
 
 def join_data(data1, data2):
+    """
+    combine two seperate tidal data into chronolofically sorted set.
+    """
     combined = pd.concat([data1, data2])
     combined = combined[~combined.index.duplicated(keep='first')]
     combined = combined.sort_index()
-    return combined 
+    return combined
 
 def sea_level_rise(data):
+    """
+    calculates the long-term relative sea level rise using linear regression.
+    """
     #clean data as linear regression cant proceed with NaNs
     clean_data = data.dropna(subset=['Sea Level'])
-    if len(clean_data) == 0: return 0.0, 1.0
-    
+    if len(clean_data) == 0:
+        return 0.0, 1.0
+
     #x-axis(Time in days)
-    t0 = pd.Timestamp(year=clean_data.index.year.min(), month=1, day=1)
-    time_days = (clean_data.index - t0).total_seconds() / 86400
+    time_days = mdates.date2num(clean_data.index)
     #y-axis(Sea Level)
     sea_levels = clean_data['Sea Level'].values
     #linear regression
     slope, intercept, r_value, p_value, std_err = stats.linregress(time_days, sea_levels)
 
-    return slope, p_value 
+    return slope, p_value
 
 def tidal_analysis(data, constituents, start_datetime):
+    """
+    performs harmonic analysis to determine tidal constituent behaviors.
+    """
     #create Tides object with consituents ['M2', 'S2']
     tide = uptide.Tides(constituents)
     tide.set_initial_time(start_datetime.replace(tzinfo=None))
-    
+
     clean_data = data.dropna(subset=['Sea Level'])
-    
+
     #localize index to UTC, use tz_convert if it's already
     if clean_data.index.tz is None:
         aware_index = clean_data.index.tz_localize("UTC")
@@ -81,29 +107,31 @@ def tidal_analysis(data, constituents, start_datetime):
         aware_index = clean_data.index.tz_convert("UTC")
 
     seconds_since = (aware_index - start_datetime).total_seconds().to_numpy()
-    
+
     elevations = clean_data['Sea Level'].to_numpy()
     amp, pha = uptide.harmonic_analysis(tide, elevations, seconds_since)
-    
-    return amp, pha 
+
+    return amp, pha
 
 def get_longest_contiguous_data(data):
     """
     identifies and extracts longest sequential segment of records unbroken by NaN or Null indicators
     """
     not_null = data['Sea Level'].notnull()
-    
+
     groups = (not_null != not_null.shift()).cumsum()
     contiguous_blocks = data[not_null].groupby(groups)
 
     if not_null.any():
         longest_group_id = contiguous_blocks.size().idxmax()
-        return contiguous_blocks.get_group(longest_group_id)                                                                                                                
-    
+        return contiguous_blocks.get_group(longest_group_id)
+
     return data.iloc[0:0]
 
 def main(args_list=None):
-
+    """
+    organise the reading of the UK Tidal Analysis file and the tracking of statistical execution.
+    """
     parser = argparse.ArgumentParser(
                      prog="UK Tidal analysis",
                      description="Calculate tidal constiuents and RSL from tide gauge data",
@@ -119,44 +147,49 @@ def main(args_list=None):
     args = parser.parse_args(args_list)
     dirname = args.directory
     verbose = args.verbose
-    
+
     dirname = dirname.rstrip(os.sep)
 
     search_path = os.path.join(dirname, "**", "*.txt")
     files = sorted(glob.glob(search_path, recursive=True))
-    
+
     if not files:
         if verbose:
             print(f"No valid records detected inside directory target: {dirname}")
         return
-    
+
     combined_data = None
     for file in files:
         if verbose:
             #emitting tracking alerts safely allows verbose tests to output beyond 50
             print(f"Loading data sequence from target path: {os.path.basename(file)}...")
-            
+
         data = read_tidal_data(file)
         if combined_data is None:
             combined_data = data
         else:
             combined_data = join_data(combined_data, data)
-            
+
         if combined_data is not None:
             slope, p_value = sea_level_rise(combined_data)
             longest_block = get_longest_contiguous_data(combined_data)
-            
+
             if verbose:
                 print("\n" + "="*45)
-                print(f"Tidal Analysis Execution Results for: {os.path.basename(dirname.strip('/'))}")
+                print(
+                    f"Tidal Analysis Execution Results for: "
+                    f"{os.path.basename(dirname.strip('/'))}"
+                    )
                 print("="*45)
                 print(f"Total Combined Measurements: {len(combined_data)}")
                 print(f"Longest Unbroken Continuous Window: {len(longest_block)} intervals")
                 if len(longest_block) > 0:
-                    print(f"Unbroken Period Bounds: {longest_block.index.min()} to {longest_block.index.max()}")
+                    start_date = longest_block.index.min()
+                    end_date = longest_block.index.max()
+                    print(f"Unbroken Period Bounds: {start_date} to {end_date}")
                 print(f"Relative Sea Level Rise Trend: {slope: .6e} m/day")
                 print(f"Analysis Significance (P-value): {p_value: .5f}")
                 print("="*45)
-   
+
 if __name__ == '__main__':
     main()
