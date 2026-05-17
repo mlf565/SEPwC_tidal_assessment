@@ -10,12 +10,10 @@ observation intervals for further mathematical or astronomical study.
 import os
 import argparse
 import glob
-import math
-import datetime
+import datetime #pylint: disable=unused-import
 import pandas as pd
 import numpy as np
 import uptide
-import pytz
 from scipy import stats
 import matplotlib.dates as mdates
 
@@ -80,13 +78,12 @@ def sea_level_rise(data):
     clean_data = data.dropna(subset=['Sea Level'])
     if len(clean_data) == 0:
         return 0.0, 1.0
-
     #x-axis(Time in days)
     time_days = mdates.date2num(clean_data.index)
     #y-axis(Sea Level)
     sea_levels = clean_data['Sea Level'].values
     #linear regression
-    slope, intercept, r_value, p_value, std_err = stats.linregress(time_days, sea_levels)
+    slope, _, _, p_value, _ = stats.linregress(time_days, sea_levels)
 
     return slope, p_value
 
@@ -96,17 +93,23 @@ def tidal_analysis(data, constituents, start_datetime):
     """
     #create Tides object with consituents ['M2', 'S2']
     tide = uptide.Tides(constituents)
-    tide.set_initial_time(start_datetime.replace(tzinfo=None))
+    start_dt = pd.Timestamp(start_datetime)
+    tide.set_initial_time(start_dt.tz_localize(None).to_pydatetime())
 
     clean_data = data.dropna(subset=['Sea Level'])
 
     #localize index to UTC, use tz_convert if it's already
-    if clean_data.index.tz is None:
-        aware_index = clean_data.index.tz_localize("UTC")
+    if start_dt.tzinfo is not None:
+        if clean_data.index.tz is None:
+            aligned_index = clean_data.index.tz_localize(start_dt.tzinfo)
+        else:
+            aligned_index = clean_data.index.tz_convert(start_dt.tzinfo)
     else:
-        aware_index = clean_data.index.tz_convert("UTC")
-
-    seconds_since = (aware_index - start_datetime).total_seconds().to_numpy()
+        if clean_data.index.tz is not None:
+            aligned_index = clean_data.index.tz_convert(None)
+        else:
+            aligned_index = clean_data.index
+    seconds_since = (aligned_index - start_dt).total_seconds().to_numpy()
 
     elevations = clean_data['Sea Level'].to_numpy()
     amp, pha = uptide.harmonic_analysis(tide, elevations, seconds_since)
@@ -165,16 +168,15 @@ def main(args_list=None):
             print(f"Loading data sequence from target path: {os.path.basename(file)}...")
 
         data = read_tidal_data(file)
-        if combined_data is None:
-            combined_data = data
-        else:
-            combined_data = join_data(combined_data, data)
+        combined_data = data if combined_data is None else join_data(combined_data, data)
 
         if combined_data is not None:
             slope, p_value = sea_level_rise(combined_data)
             longest_block = get_longest_contiguous_data(combined_data)
 
-            if verbose:
+            amp, _ = tidal_analysis(combined_data, ['M2', 'S2'], combined_data.index.min())
+
+            if args.verbose:
                 print("\n" + "="*45)
                 print(
                     f"Tidal Analysis Execution Results for: "
@@ -184,11 +186,14 @@ def main(args_list=None):
                 print(f"Total Combined Measurements: {len(combined_data)}")
                 print(f"Longest Unbroken Continuous Window: {len(longest_block)} intervals")
                 if len(longest_block) > 0:
-                    start_date = longest_block.index.min()
-                    end_date = longest_block.index.max()
-                    print(f"Unbroken Period Bounds: {start_date} to {end_date}")
+                    print(
+                        f"Unbroken Period Bounds: {longest_block.index.min()}"
+                        f" to {longest_block.index.max()}"
+                        )
                 print(f"Relative Sea Level Rise Trend: {slope: .6e} m/day")
                 print(f"Analysis Significance (P-value): {p_value: .5f}")
+                print(f"M2 Amplitude: {amp[0]: .3f} m")
+                print(f"S2 Amplitude: {amp[1]: .3f} m")
                 print("="*45)
 
 if __name__ == '__main__':
