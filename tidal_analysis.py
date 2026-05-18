@@ -6,6 +6,7 @@ relative sea level rise trends over time and extracts continuous operational
 observation intervals for further mathematical or astronomical study.
 """
 
+# Copyright 2026 by Kai Ern Lim. CC-BY-SA.
 # import the modules we need
 import os
 import argparse
@@ -66,6 +67,7 @@ def join_data(data1, data2):
     combine two seperate tidal data into chronologically sorted set.
     """
     combined = pd.concat([data1, data2])
+    #avoid duplicated
     combined = combined[~combined.index.duplicated(keep='first')]
     combined = combined.sort_index()
     return combined
